@@ -7,17 +7,8 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  ical-sync:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Sync iCal feeds (Airbnb/Booking.com/etc)
-        run: |
-          curl -fsS -X POST "${{ secrets.BACKEND_URL }}/automation/sync-ical-feeds" \
-            -H "X-Automation-Secret: ${{ secrets.AUTOMATION_SECRET }}"
-
   daily-reminders:
     runs-on: ubuntu-latest
-    needs: ical-sync
     steps:
       - name: Send daily reminders (arrivals, checkouts, pending payments, summary)
         run: |

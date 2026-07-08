@@ -1,0 +1,16 @@
+name: iCal Sync
+
+on:
+  schedule:
+    # Every 15 minutes — pulls Airbnb/Booking.com/etc calendar changes into bookings
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ical-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync iCal feeds (Airbnb/Booking.com/etc)
+        run: |
+          curl -fsS -X POST "${{ secrets.BACKEND_URL }}/automation/sync-ical-feeds" \
+            -H "X-Automation-Secret: ${{ secrets.AUTOMATION_SECRET }}"
