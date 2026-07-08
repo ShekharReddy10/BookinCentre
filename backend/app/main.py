@@ -5,7 +5,7 @@ from app.config import settings
 from app.database import Base, engine
 from app.routers import (
     auth, users, rooms, bookings, clusters, dashboard, expenses, guests, reports,
-    automation, ical_feeds,
+    automation, ical_feeds, teams,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -31,6 +31,7 @@ app.include_router(guests.router)
 app.include_router(reports.router)
 app.include_router(automation.router)
 app.include_router(ical_feeds.router)
+app.include_router(teams.router)
 
 
 @app.get("/health")

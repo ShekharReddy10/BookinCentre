@@ -150,3 +150,20 @@ export interface ICalFeed {
   last_sync_status?: string | null;
   created_at: string;
 }
+
+export interface Team {
+  id: string;
+  name: string;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface TeamWithPermissions extends Team {
+  permissions: string[];
+  user_ids: string[];
+}
+
+export interface PermissionKey {
+  key: string;
+  label: string;
+}

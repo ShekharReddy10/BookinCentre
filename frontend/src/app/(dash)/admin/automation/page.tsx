@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
-import { Plus, RefreshCw, Send, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Send, Trash2 } from "lucide-react";
 
 const SOURCES: BookingSource[] = ["airbnb", "booking_com", "oyo", "makemytrip"];
 
@@ -30,6 +30,7 @@ export default function AdminAutomationPage() {
   const { clusters } = useCluster();
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
@@ -51,10 +52,20 @@ export default function AdminAutomationPage() {
     onSuccess: () => {
       toast.success("Feed added");
       qc.invalidateQueries({ queryKey: ["ical-feeds"] });
-      setModalOpen(false);
-      setForm(emptyForm);
+      closeModal();
     },
     onError: (e: any) => toast.error(e?.response?.data?.detail || "Failed to add feed"),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: typeof emptyForm }) =>
+      (await api.patch(`/ical-feeds/${id}`, { ...payload, managed_by_user_id: payload.managed_by_user_id || null })).data,
+    onSuccess: () => {
+      toast.success("Feed updated");
+      qc.invalidateQueries({ queryKey: ["ical-feeds"] });
+      closeModal();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.detail || "Failed to update feed"),
   });
 
   const syncMutation = useMutation({
@@ -74,6 +85,40 @@ export default function AdminAutomationPage() {
       qc.invalidateQueries({ queryKey: ["ical-feeds"] });
     },
   });
+
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setModalOpen(true);
+  }
+
+  function openEdit(feed: ICalFeed) {
+    setEditingId(feed.id);
+    setForm({
+      label: feed.label || "",
+      cluster_id: feed.cluster_id,
+      managed_by_user_id: feed.managed_by_user_id || "",
+      has_ac: feed.has_ac,
+      source: feed.source,
+      url: feed.url,
+    });
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+    setEditingId(null);
+    setForm(emptyForm);
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, payload: form });
+    } else {
+      createMutation.mutate(form);
+    }
+  }
 
   const testNotifMutation = useMutation({
     mutationFn: async () => (await api.post("/automation/test-notification")).data,
@@ -119,7 +164,7 @@ export default function AdminAutomationPage() {
             Booking.com: Extranet → Calendar → Sync calendars). Bookings created from a feed arrive with a generic
             guest name — fill in the real details once known.
           </p>
-          <Button onClick={() => setModalOpen(true)}>
+          <Button onClick={openCreate}>
             <Plus className="h-4 w-4" /> Add Feed
           </Button>
 
@@ -150,6 +195,9 @@ export default function AdminAutomationPage() {
                   <Button variant="outline" size="sm" onClick={() => syncMutation.mutate(feed.id)} disabled={syncMutation.isPending}>
                     <RefreshCw className="h-3.5 w-3.5" /> Sync Now
                   </Button>
+                  <Button variant="outline" size="sm" onClick={() => openEdit(feed)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => deleteMutation.mutate(feed.id)}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -161,14 +209,8 @@ export default function AdminAutomationPage() {
         </CardContent>
       </Card>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add iCal Feed">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            createMutation.mutate(form);
-          }}
-          className="space-y-3"
-        >
+      <Modal open={modalOpen} onClose={closeModal} title={editingId ? "Edit iCal Feed" : "Add iCal Feed"}>
+        <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <Label>Label (optional, helps tell feeds apart)</Label>
             <Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="Account 2 - AC Listing" />
@@ -208,7 +250,9 @@ export default function AdminAutomationPage() {
             <Label>Calendar Export URL</Label>
             <Input required type="url" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://www.airbnb.com/calendar/ical/..." />
           </div>
-          <Button type="submit" className="w-full" disabled={createMutation.isPending}>Add Feed</Button>
+          <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending}>
+            {editingId ? "Save Changes" : "Add Feed"}
+          </Button>
         </form>
       </Modal>
     </div>

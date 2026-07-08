@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 import { useCluster } from "@/lib/cluster-context";
 import { Download } from "lucide-react";
 
@@ -37,8 +39,14 @@ interface ExpensesSummary {
 }
 
 export default function ReportsPage() {
+  const { user, hasPermission } = useAuth();
+  const router = useRouter();
   const { clusterParam } = useCluster();
   const [range, setRange] = useState({ from_date: "", to_date: "" });
+
+  useEffect(() => {
+    if (user && !hasPermission("reports.view")) router.replace("/dashboard");
+  }, [user, hasPermission, router]);
 
   const params = { ...clusterParam, ...Object.fromEntries(Object.entries(range).filter(([, v]) => v)) };
 
@@ -65,6 +73,8 @@ export default function ReportsPage() {
     a.download = `${kind}.csv`;
     a.click();
   }
+
+  if (!user || !hasPermission("reports.view")) return null;
 
   return (
     <div className="space-y-6">

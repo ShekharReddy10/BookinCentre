@@ -127,6 +127,47 @@ class UserClusterAccess(Base):
     cluster = relationship("Cluster", back_populates="user_access")
 
 
+class Team(Base):
+    """A group of sidebar/action permissions (e.g. 'Front Desk', 'Finance').
+    Users are mapped to one or more teams; their effective permissions are the
+    union of every team they belong to. Admin-role users bypass this entirely
+    and always have every permission, same as they bypass cluster access.
+    """
+    __tablename__ = "teams"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    name = Column(String, nullable=False, unique=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    permissions = relationship("TeamPermission", back_populates="team", cascade="all, delete-orphan")
+    user_links = relationship("UserTeam", back_populates="team", cascade="all, delete-orphan")
+
+
+class TeamPermission(Base):
+    """One permission key (see app/permissions.py for the fixed list) granted to a team."""
+    __tablename__ = "team_permissions"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    team_id = Column(String, ForeignKey("teams.id"), nullable=False)
+    permission = Column(String, nullable=False)
+
+    team = relationship("Team", back_populates="permissions")
+
+
+class UserTeam(Base):
+    """Maps a user to a team. A user can belong to multiple teams."""
+    __tablename__ = "user_teams"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    team_id = Column(String, ForeignKey("teams.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")
+    team = relationship("Team", back_populates="user_links")
+
+
 class Room(Base):
     __tablename__ = "rooms"
 

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, BedDouble, CalendarDays, BookOpenCheck,
-  BarChart3, Wallet, Users, LogOut, Menu, X, ShieldCheck, Building2, MoreHorizontal, KeyRound, Zap,
+  BarChart3, Wallet, Users, LogOut, Menu, X, ShieldCheck, Building2, MoreHorizontal, KeyRound, Zap, UsersRound,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ClusterProvider, useCluster } from "@/lib/cluster-context";
@@ -13,22 +13,23 @@ import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 
 const PRIMARY_NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/bookings", label: "Bookings", icon: BookOpenCheck },
-  { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/rooms", label: "Rooms", icon: BedDouble },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "dashboard.view" },
+  { href: "/bookings", label: "Bookings", icon: BookOpenCheck, permission: "bookings.view" },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays, permission: "calendar.view" },
+  { href: "/rooms", label: "Rooms", icon: BedDouble, permission: "rooms.view" },
 ];
 
 const MORE_NAV = [
-  { href: "/reports", label: "Reports", icon: BarChart3 },
-  { href: "/expenses", label: "Expenses", icon: Wallet },
-  { href: "/guests", label: "Guests", icon: Users },
+  { href: "/reports", label: "Reports", icon: BarChart3, permission: "reports.view" },
+  { href: "/expenses", label: "Expenses", icon: Wallet, permission: "expenses.view" },
+  { href: "/guests", label: "Guests", icon: Users, permission: "guests.view" },
 ];
 
 const ADMIN_NAV = [
-  { href: "/admin/users", label: "Users", icon: ShieldCheck },
-  { href: "/admin/clusters", label: "Clusters", icon: Building2 },
-  { href: "/admin/automation", label: "Automation", icon: Zap },
+  { href: "/admin/users", label: "Users", icon: ShieldCheck, permission: "admin.users" },
+  { href: "/admin/clusters", label: "Clusters", icon: Building2, permission: "admin.clusters" },
+  { href: "/admin/automation", label: "Automation", icon: Zap, permission: "admin.automation" },
+  { href: "/admin/teams", label: "Teams", icon: UsersRound, permission: "admin.teams" },
 ];
 
 function ClusterSwitcher() {
@@ -49,15 +50,15 @@ function ClusterSwitcher() {
 }
 
 function DashShell({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
   if (!user) return null;
 
-  const isAdmin = user.role === "admin";
-  const secondaryNav = isAdmin ? [...MORE_NAV, ...ADMIN_NAV] : MORE_NAV;
+  const primaryNav = PRIMARY_NAV.filter((n) => hasPermission(n.permission));
+  const secondaryNav = [...MORE_NAV, ...ADMIN_NAV].filter((n) => hasPermission(n.permission));
 
   return (
     <div className="flex flex-1 min-h-screen">
@@ -81,7 +82,7 @@ function DashShell({ children }: { children: ReactNode }) {
           <ClusterSwitcher />
         </div>
         <nav className="space-y-1">
-          {[...PRIMARY_NAV, ...secondaryNav].map(({ href, label, icon: Icon }) => (
+          {[...primaryNav, ...secondaryNav].map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
@@ -131,7 +132,7 @@ function DashShell({ children }: { children: ReactNode }) {
 
         {/* Mobile bottom tab bar */}
         <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 md:hidden [padding-bottom:env(safe-area-inset-bottom)]">
-          {PRIMARY_NAV.map(({ href, label, icon: Icon }) => (
+          {primaryNav.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}

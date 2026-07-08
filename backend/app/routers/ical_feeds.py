@@ -7,7 +7,7 @@ from app.auth import get_accessible_cluster_ids, get_current_user, require_roles
 from app.database import get_db
 from app.ical_sync import sync_feed
 from app.models import Cluster, ICalFeed, User, UserRole
-from app.schemas import ICalFeedCreate, ICalFeedOut
+from app.schemas import ICalFeedCreate, ICalFeedOut, ICalFeedUpdate
 
 router = APIRouter(prefix="/ical-feeds", tags=["ical"])
 
@@ -45,6 +45,38 @@ def create_feed(
 
     feed = ICalFeed(**payload.model_dump())
     db.add(feed)
+    db.commit()
+    db.refresh(feed)
+    return feed
+
+
+@router.patch("/{feed_id}", response_model=ICalFeedOut)
+def update_feed(
+    feed_id: str,
+    payload: ICalFeedUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.admin, UserRole.manager)),
+):
+    feed = db.query(ICalFeed).filter(ICalFeed.id == feed_id).first()
+    if not feed:
+        raise HTTPException(status_code=404, detail="Feed not found")
+    _check_access(feed.cluster_id, current_user, db)
+
+    data = payload.model_dump(exclude_unset=True)
+
+    if "cluster_id" in data:
+        cluster = db.query(Cluster).filter(Cluster.id == data["cluster_id"]).first()
+        if not cluster:
+            raise HTTPException(status_code=404, detail="Cluster not found")
+        _check_access(data["cluster_id"], current_user, db)
+
+    if "managed_by_user_id" in data and data["managed_by_user_id"]:
+        managed_by = db.query(User).filter(User.id == data["managed_by_user_id"]).first()
+        if not managed_by:
+            raise HTTPException(status_code=404, detail="managed_by_user_id does not match an existing user")
+
+    for field, value in data.items():
+        setattr(feed, field, value)
     db.commit()
     db.refresh(feed)
     return feed

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.auth import create_access_token, get_current_user, hash_password, verify_password
 from app.database import get_db
 from app.models import User
+from app.permissions import get_user_permissions
 from app.schemas import ChangePasswordRequest, LoginRequest, Token, UserOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -18,12 +19,19 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled")
 
     token = create_access_token({"sub": user.id})
-    return Token(access_token=token, user=UserOut.model_validate(user))
+    permissions = get_user_permissions(db, user)
+    return Token(access_token=token, user=UserOut.model_validate(user), permissions=permissions)
 
 
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.get("/permissions")
+def my_permissions(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Re-fetch current effective permissions without a full re-login (e.g. after an admin changes your team)."""
+    return {"permissions": get_user_permissions(db, current_user)}
 
 
 @router.post("/change-password")

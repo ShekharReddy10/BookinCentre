@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ArrowLeft } from "lucide-react";
 
 export default function ChangePasswordPage() {
   const { user, loading, markPasswordChanged } = useAuth();
@@ -49,6 +50,14 @@ export default function ChangePasswordPage() {
   return (
     <div className="flex flex-1 items-center justify-center p-4">
       <div className="w-full max-w-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-8 shadow-sm">
+        {!user.must_change_password && (
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="mb-4 flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to Dashboard
+          </button>
+        )}
         <h1 className="mb-1 text-xl font-semibold">Set a new password</h1>
         <p className="mb-6 text-sm text-slate-500">
           {user.must_change_password

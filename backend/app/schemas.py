@@ -65,6 +65,7 @@ class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserOut
+    permissions: list[str] = []
 
 
 # ---------- Clusters ----------
@@ -270,6 +271,16 @@ class ICalFeedCreate(BaseModel):
     is_active: bool = True
 
 
+class ICalFeedUpdate(BaseModel):
+    label: Optional[str] = None
+    cluster_id: Optional[str] = None
+    managed_by_user_id: Optional[str] = None
+    has_ac: Optional[bool] = None
+    source: Optional[BookingSource] = None
+    url: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
 class ICalFeedOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -283,3 +294,40 @@ class ICalFeedOut(BaseModel):
     last_synced_at: Optional[datetime] = None
     last_sync_status: Optional[str] = None
     created_at: datetime
+
+
+# ---------- Teams / Permissions ----------
+
+class TeamCreate(BaseModel):
+    name: str
+    notes: Optional[str] = None
+
+
+class TeamUpdate(BaseModel):
+    name: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class TeamOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    notes: Optional[str] = None
+    created_at: datetime
+
+
+class TeamWithPermissions(TeamOut):
+    permissions: list[str] = []
+    user_ids: list[str] = []
+
+
+class SetTeamPermissionsRequest(BaseModel):
+    permissions: list[str]
+
+
+class SetUserTeamsRequest(BaseModel):
+    team_ids: list[str]
+
+
+class SetTeamUsersRequest(BaseModel):
+    user_ids: list[str]

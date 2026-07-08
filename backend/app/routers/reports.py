@@ -8,9 +8,10 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.auth import get_accessible_cluster_ids, get_current_user
+from app.auth import get_accessible_cluster_ids
 from app.database import get_db
 from app.models import Booking, Expense, Room, User, BookingStatus
+from app.permissions import require_permission
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -37,7 +38,7 @@ def revenue_report(
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("reports.view")),
 ):
     bookings = _scoped_bookings(db, current_user, cluster_id, from_date, to_date).all()
     total_revenue = sum(b.total_amount for b in bookings)
@@ -72,7 +73,7 @@ def team_performance(
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("reports.view")),
 ):
     users = db.query(User).filter(User.is_active == True).all()  # noqa: E712
     today = date.today()
@@ -104,7 +105,7 @@ def expenses_summary(
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("reports.view")),
 ):
     q = db.query(Expense)
     if from_date:
@@ -136,7 +137,7 @@ def export_bookings_csv(
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("reports.view")),
 ):
     bookings = _scoped_bookings(db, current_user, cluster_id, None, None)
     if from_date:
@@ -170,7 +171,7 @@ def export_expenses_csv(
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission("reports.view")),
 ):
     q = db.query(Expense)
     if from_date:
