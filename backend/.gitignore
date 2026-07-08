@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .env
 *.db
+app/ical_feeds_data.py

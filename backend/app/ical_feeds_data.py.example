@@ -1,4 +1,6 @@
-"""Edit this list with your real listing calendar URLs, then run:
+"""Copy this file to app/ical_feeds_data.py (gitignored — it'll hold real,
+somewhat-sensitive calendar URLs) and fill in FEEDS with your real listings,
+then run:
 
     python -m app.add_ical_feed
 

@@ -54,6 +54,10 @@ def add_feed(cluster_name: str, category: str, source: str, url: str) -> bool:
             print(f"  SKIP: no cluster named '{cluster_name}'. Run --list-clusters to see valid names.")
             return False
 
+        if db.query(ICalFeed).filter(ICalFeed.url == url).first():
+            print(f"  SKIP: a feed with this URL already exists -> {url[:60]}...")
+            return False
+
         feed = ICalFeed(cluster_id=cluster.id, has_ac=has_ac, source=BookingSource(source), url=url)
         db.add(feed)
         db.commit()
