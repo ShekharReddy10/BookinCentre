@@ -119,7 +119,7 @@ function DashShell({ children }: { children: ReactNode }) {
         <div className="fixed inset-0 z-30 bg-black/30 md:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col md:ml-60">
+      <div className="flex min-w-0 flex-1 flex-col">
         {/* Mobile top bar */}
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-4 py-3 md:hidden">
           <button onClick={() => setMobileOpen(true)} className="p-1 -ml-1">
