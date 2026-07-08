@@ -28,6 +28,19 @@ export function ClusterProvider({ children }: { children: ReactNode }) {
     if (stored) setSelectedClusterIdState(stored);
   }, []);
 
+  // Self-heal: if a previously-selected cluster (e.g. a deleted demo cluster)
+  // no longer exists, every cluster-scoped query would otherwise silently
+  // return empty forever. Fall back to "all" instead once we know the real list.
+  useEffect(() => {
+    if (!clusters) return;
+    if (selectedClusterId === "all") return;
+    const stillExists = clusters.some((c) => c.id === selectedClusterId);
+    if (!stillExists) {
+      setSelectedClusterIdState("all");
+      localStorage.setItem("bcc_cluster", "all");
+    }
+  }, [clusters, selectedClusterId]);
+
   function setSelectedClusterId(id: string | "all") {
     setSelectedClusterIdState(id);
     localStorage.setItem("bcc_cluster", id);
