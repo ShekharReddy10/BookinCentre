@@ -1,0 +1,187 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { useCluster } from "@/lib/cluster-context";
+import { BookingSource, ICalFeed, Room } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Modal } from "@/components/ui/modal";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { formatDate } from "@/lib/utils";
+import { toast } from "sonner";
+import { Plus, RefreshCw, Send, Trash2 } from "lucide-react";
+
+const SOURCES: BookingSource[] = ["airbnb", "booking_com", "oyo", "makemytrip"];
+
+const emptyForm = { room_id: "", source: "airbnb" as BookingSource, url: "" };
+
+export default function AdminAutomationPage() {
+  const { user } = useAuth();
+  const router = useRouter();
+  const qc = useQueryClient();
+  const { clusters } = useCluster();
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+
+  useEffect(() => {
+    if (user && user.role !== "admin") router.replace("/dashboard");
+  }, [user, router]);
+
+  const { data: rooms } = useQuery<Room[]>({ queryKey: ["rooms"], queryFn: async () => (await api.get("/rooms")).data });
+  const { data: feeds, isLoading } = useQuery<ICalFeed[]>({
+    queryKey: ["ical-feeds"],
+    queryFn: async () => (await api.get("/ical-feeds")).data,
+  });
+
+  const roomLabel = (roomId: string) => {
+    const room = rooms?.find((r) => r.id === roomId);
+    if (!room) return roomId;
+    return `${room.room_number} · ${clusters.find((c) => c.id === room.cluster_id)?.name || ""}`;
+  };
+
+  const createMutation = useMutation({
+    mutationFn: async (payload: typeof emptyForm) => (await api.post("/ical-feeds", payload)).data,
+    onSuccess: () => {
+      toast.success("Feed added");
+      qc.invalidateQueries({ queryKey: ["ical-feeds"] });
+      setModalOpen(false);
+      setForm(emptyForm);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.detail || "Failed to add feed"),
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async (feedId: string) => (await api.post(`/ical-feeds/${feedId}/sync`)).data,
+    onSuccess: (data) => {
+      toast.success(`Synced: ${data.created} created, ${data.updated} updated`);
+      qc.invalidateQueries({ queryKey: ["ical-feeds"] });
+      qc.invalidateQueries({ queryKey: ["bookings"] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.detail || "Sync failed"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (feedId: string) => (await api.delete(`/ical-feeds/${feedId}`)).data,
+    onSuccess: () => {
+      toast.success("Feed removed");
+      qc.invalidateQueries({ queryKey: ["ical-feeds"] });
+    },
+  });
+
+  const testNotifMutation = useMutation({
+    mutationFn: async () => (await api.post("/automation/test-notification")).data,
+    onSuccess: (data) => {
+      if (data.telegram_sent || data.email_sent) {
+        toast.success(`Sent — Telegram: ${data.telegram_sent ? "yes" : "no"}, Email: ${data.email_sent ? "yes" : "no"}`);
+      } else {
+        toast.error("Nothing configured — set TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID or RESEND_API_KEY in backend/.env");
+      }
+    },
+  });
+
+  if (!user || user.role !== "admin") return null;
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-semibold">Admin · Automation</h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Notifications (Telegram / Email)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-slate-500">
+            Configure <code>TELEGRAM_BOT_TOKEN</code> / <code>TELEGRAM_CHAT_ID</code> and/or{" "}
+            <code>RESEND_API_KEY</code> (or SMTP settings) in <code>backend/.env</code>, then send yourself a test
+            message to confirm it works. Daily arrival/checkout/pending-payment/summary reminders reuse the same
+            config — see the README for how to schedule them.
+          </p>
+          <Button onClick={() => testNotifMutation.mutate()} disabled={testNotifMutation.isPending}>
+            <Send className="h-4 w-4" /> Send Test Notification
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>iCal Sync (Airbnb / Booking.com / OYO / MakeMyTrip)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-slate-500">
+            Paste each listing&apos;s calendar export URL (Airbnb: Calendar → Availability → Export Calendar ·
+            Booking.com: Extranet → Calendar → Sync calendars). Bookings created from a feed arrive with a generic
+            guest name — fill in the real details once known.
+          </p>
+          <Button onClick={() => setModalOpen(true)}>
+            <Plus className="h-4 w-4" /> Add Feed
+          </Button>
+
+          {isLoading && <p className="text-sm text-slate-400">Loading...</p>}
+
+          <div className="space-y-2">
+            {(feeds || []).map((feed) => (
+              <div
+                key={feed.id}
+                className="flex flex-col gap-2 rounded-md border border-slate-200 dark:border-slate-800 p-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <div className="font-medium">{roomLabel(feed.room_id)} · <span className="capitalize">{feed.source.replace("_", " ")}</span></div>
+                  <div className="truncate text-xs text-slate-400">{feed.url}</div>
+                  <div className="text-xs text-slate-400">
+                    {feed.last_synced_at ? `Last synced ${formatDate(feed.last_synced_at)}` : "Never synced"}
+                    {feed.last_sync_status ? ` — ${feed.last_sync_status}` : ""}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => syncMutation.mutate(feed.id)} disabled={syncMutation.isPending}>
+                    <RefreshCw className="h-3.5 w-3.5" /> Sync Now
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => deleteMutation.mutate(feed.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {!isLoading && (feeds || []).length === 0 && <p className="text-sm text-slate-400">No feeds added yet.</p>}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Add iCal Feed">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            createMutation.mutate(form);
+          }}
+          className="space-y-3"
+        >
+          <div>
+            <Label>Room</Label>
+            <Select required value={form.room_id} onChange={(e) => setForm({ ...form, room_id: e.target.value })}>
+              <option value="">Select room</option>
+              {(rooms || []).map((r) => <option key={r.id} value={r.id}>{roomLabel(r.id)}</option>)}
+            </Select>
+          </div>
+          <div>
+            <Label>Source</Label>
+            <Select value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value as BookingSource })}>
+              {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </Select>
+          </div>
+          <div>
+            <Label>Calendar Export URL</Label>
+            <Input required type="url" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://www.airbnb.com/calendar/ical/..." />
+          </div>
+          <Button type="submit" className="w-full" disabled={createMutation.isPending}>Add Feed</Button>
+        </form>
+      </Modal>
+    </div>
+  );
+}

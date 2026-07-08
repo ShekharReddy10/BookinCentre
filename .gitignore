@@ -1,0 +1,5 @@
+# Editor/tooling artifacts not part of the project
+.claude/
+.vscode/
+.idea/
+.DS_Store
