@@ -29,6 +29,17 @@ def _to_date(value) -> date:
     return value if isinstance(value, date) and not isinstance(value, datetime) else value.date()
 
 
+# Platforms (Airbnb especially) include non-reservation entries in the same feed —
+# e.g. a "Not available" placeholder marking the edge of the booking window, or a
+# host-set block. These aren't guests; skip them rather than creating fake bookings.
+_BLOCK_KEYWORDS = ("not available", "unavailable", "blocked", "closed")
+
+
+def _is_real_reservation(summary: str) -> bool:
+    lowered = summary.lower()
+    return not any(keyword in lowered for keyword in _BLOCK_KEYWORDS)
+
+
 def sync_feed(db: Session, feed: ICalFeed) -> dict:
     resp = httpx.get(feed.url, timeout=20, follow_redirects=True)
     resp.raise_for_status()
@@ -37,6 +48,7 @@ def sync_feed(db: Session, feed: ICalFeed) -> dict:
     created = 0
     updated = 0
     unallocated = 0
+    skipped_blocks = 0
     seen_uids = []
     touched_checkin_dates = set()
 
@@ -49,6 +61,10 @@ def sync_feed(db: Session, feed: ICalFeed) -> dict:
         checkout = _to_date(component.get("DTEND").dt)
         summary = str(component.get("SUMMARY") or "Reserved")
         seen_uids.append(uid)
+
+        if not _is_real_reservation(summary):
+            skipped_blocks += 1
+            continue
 
         existing = db.query(Booking).filter(Booking.external_uid == uid, Booking.ical_feed_id == feed.id).first()
         if existing:
@@ -97,6 +113,8 @@ def sync_feed(db: Session, feed: ICalFeed) -> dict:
 
     feed.last_synced_at = datetime.utcnow()
     status = f"ok — {created} created, {updated} updated"
+    if skipped_blocks:
+        status += f", {skipped_blocks} non-reservation blocks skipped"
     if unallocated:
         status += f", {unallocated} could NOT be allocated (no free room — check for overbooking)"
     feed.last_sync_status = status
@@ -106,7 +124,13 @@ def sync_feed(db: Session, feed: ICalFeed) -> dict:
         check_cluster_fully_booked(db, feed.cluster_id, checkin_date)
         check_category_fully_booked(db, feed.cluster_id, feed.has_ac, checkin_date)
 
-    return {"created": created, "updated": updated, "unallocated": unallocated, "total_events": len(seen_uids)}
+    return {
+        "created": created,
+        "updated": updated,
+        "unallocated": unallocated,
+        "skipped_blocks": skipped_blocks,
+        "total_events": len(seen_uids),
+    }
 
 
 def sync_all_feeds(db: Session) -> list[dict]:
