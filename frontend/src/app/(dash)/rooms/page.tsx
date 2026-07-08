@@ -140,9 +140,20 @@ export default function RoomsPage() {
               <div className="mt-2 text-xs text-slate-400">Max guests: {room.maximum_guests}</div>
               {room.amenities && <div className="mt-1 text-xs text-slate-400">{room.amenities}</div>}
               {canEdit && (
-                <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => openEdit(room)}>
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </Button>
+                <div className="mt-3 flex gap-2">
+                  <Button variant="outline" size="sm" className="flex-1" onClick={() => openEdit(room)}>
+                    <Pencil className="h-3.5 w-3.5" /> Edit
+                  </Button>
+                  {room.status === "cleaning" && (
+                    <Button
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => updateMutation.mutate({ id: room.id, payload: { status: "available" } })}
+                    >
+                      Mark Available
+                    </Button>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.allocation import allocate_available_room
 from app.auth import get_accessible_cluster_ids, get_current_user
 from app.database import get_db
-from app.models import Booking, Cluster, Room, User, BookingStatus, BookingSource, PaymentStatus
+from app.models import Booking, Cluster, Room, RoomStatus, User, BookingStatus, BookingSource, PaymentStatus
 from app.reminders import check_category_fully_booked, check_cluster_fully_booked, notify_checkout_availability
 from app.schemas import BookingCreate, BookingOut, BookingUpdate
 
@@ -35,6 +35,20 @@ def check_conflict(db: Session, room_id: str, checkin: date, checkout: date, exc
             status_code=409,
             detail=f"Room already booked for {conflict.guest_name} from {conflict.checkin_date} to {conflict.checkout_date}",
         )
+
+
+def sync_room_status(room: Room, booking_status: BookingStatus):
+    """Auto-flips a room's status to match the booking lifecycle so staff don't
+    have to remember to update it by hand. Check-in -> occupied, check-out ->
+    cleaning. Deliberately does NOT auto-revert to "available" on cancel/no-show
+    or auto-clear "cleaning" - both need a human to confirm (we can't know a
+    cancellation didn't leave the room mid-stay, or that cleaning actually
+    finished), so those stay manual edits via the Rooms page.
+    """
+    if booking_status == BookingStatus.checked_in:
+        room.status = RoomStatus.occupied
+    elif booking_status == BookingStatus.checked_out:
+        room.status = RoomStatus.cleaning
 
 
 def recompute_pending(booking: Booking):
@@ -124,6 +138,7 @@ def create_booking(payload: BookingCreate, db: Session = Depends(get_db), curren
 
     booking = Booking(**data, room_id=room.id)
     recompute_pending(booking)
+    sync_room_status(room, booking.booking_status)
     db.add(booking)
     db.commit()
     db.refresh(booking)
@@ -180,10 +195,13 @@ def update_booking(
         setattr(booking, field, value)
 
     recompute_pending(booking)
-    db.commit()
-    db.refresh(booking)
 
     current_room = db.query(Room).filter(Room.id == booking.room_id).first()
+    if previous_status != booking.booking_status:
+        sync_room_status(current_room, booking.booking_status)
+
+    db.commit()
+    db.refresh(booking)
 
     if booking.booking_status in ACTIVE_STATUSES:
         check_cluster_fully_booked(db, current_room.cluster_id, booking.checkin_date)
