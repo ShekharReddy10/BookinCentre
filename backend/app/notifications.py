@@ -13,20 +13,28 @@ logger = logging.getLogger("bcc.notifications")
 
 
 def send_telegram_message(text: str) -> bool:
-    if not settings.telegram_bot_token or not settings.telegram_chat_id:
+    """Sends to every chat ID in TELEGRAM_CHAT_ID (comma-separated — a personal
+    chat and/or one or more group chat IDs). Returns True if at least one send
+    succeeded.
+    """
+    chat_ids = [c.strip() for c in settings.telegram_chat_id.split(",") if c.strip()]
+    if not settings.telegram_bot_token or not chat_ids:
         logger.info("Telegram not configured, skipping message: %s", text[:80])
         return False
-    try:
-        resp = httpx.post(
-            f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage",
-            json={"chat_id": settings.telegram_chat_id, "text": text, "parse_mode": "Markdown"},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        return True
-    except httpx.HTTPError as e:
-        logger.warning("Telegram send failed: %s", e)
-        return False
+
+    any_sent = False
+    for chat_id in chat_ids:
+        try:
+            resp = httpx.post(
+                f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            any_sent = True
+        except httpx.HTTPError as e:
+            logger.warning("Telegram send to %s failed: %s", chat_id, e)
+    return any_sent
 
 
 def _send_via_resend(to: list[str], subject: str, html: str) -> bool:
