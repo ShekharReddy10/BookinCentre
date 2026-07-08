@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_accessible_cluster_ids, get_current_user
 from app.database import get_db
 from app.models import Booking, Room, User, BookingStatus, BookingSource, PaymentStatus
+from app.reminders import check_cluster_fully_booked
 from app.schemas import BookingCreate, BookingOut, BookingUpdate
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
@@ -107,6 +108,10 @@ def create_booking(payload: BookingCreate, db: Session = Depends(get_db), curren
     db.add(booking)
     db.commit()
     db.refresh(booking)
+
+    if booking.booking_status in ACTIVE_STATUSES:
+        check_cluster_fully_booked(db, room.cluster_id, booking.checkin_date)
+
     return booking
 
 
@@ -154,6 +159,11 @@ def update_booking(
     recompute_pending(booking)
     db.commit()
     db.refresh(booking)
+
+    if booking.booking_status in ACTIVE_STATUSES:
+        current_room = db.query(Room).filter(Room.id == booking.room_id).first()
+        check_cluster_fully_booked(db, current_room.cluster_id, booking.checkin_date)
+
     return booking
 
 

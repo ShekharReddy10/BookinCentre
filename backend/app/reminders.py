@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Booking, BookingStatus, Reminder, ReminderType, Room, RoomStatus, User, UserRole
+from app.models import Booking, BookingStatus, Cluster, Reminder, ReminderType, Room, RoomStatus, User, UserRole
 from app.notifications import send_email, send_telegram_message
 
 ACTIVE_STATUSES = [BookingStatus.reserved, BookingStatus.confirmed, BookingStatus.checked_in]
@@ -26,6 +26,41 @@ def _recipients(db: Session) -> list[str]:
 
 def _log(db: Session, booking_id, reminder_type: ReminderType):
     db.add(Reminder(booking_id=booking_id, reminder_type=reminder_type, sent=True, sent_at=datetime.utcnow()))
+
+
+def check_cluster_fully_booked(db: Session, cluster_id: str, on_date: date) -> bool:
+    """Call right after creating/updating a booking. If every active room in the
+    booking's cluster now has an active booking covering `on_date`, fires an
+    immediate alert (Telegram + email) so the host can close other platform
+    listings before a double-booking happens elsewhere. Best-effort — may
+    re-fire if another booking touches an already-full day, which is an
+    acceptable tradeoff over missing the alert entirely.
+    """
+    total_rooms = db.query(Room).filter(Room.cluster_id == cluster_id, Room.is_active == True).count()  # noqa: E712
+    if total_rooms == 0:
+        return False
+
+    booked_rooms = db.query(Booking.room_id).join(Room, Booking.room_id == Room.id).filter(
+        Room.cluster_id == cluster_id,
+        Booking.booking_status.in_(ACTIVE_STATUSES),
+        Booking.checkin_date <= on_date,
+        Booking.checkout_date > on_date,
+    ).distinct().count()
+
+    if booked_rooms < total_rooms:
+        return False
+
+    cluster = db.query(Cluster).filter(Cluster.id == cluster_id).first()
+    if not cluster:
+        return False
+
+    text = (
+        f"🚫 *{cluster.name}* is fully booked on {on_date.isoformat()} — all {total_rooms} rooms "
+        f"taken. Close/block other platform listings for this date to avoid a double-booking."
+    )
+    send_telegram_message(text)
+    send_email(_recipients(db), f"{cluster.name} fully booked on {on_date.isoformat()}", text)
+    return True
 
 
 def run_daily_reminders(db: Session) -> dict:

@@ -14,6 +14,7 @@ from icalendar import Calendar
 from sqlalchemy.orm import Session
 
 from app.models import Booking, BookingStatus, ICalFeed
+from app.reminders import check_cluster_fully_booked
 
 
 def _to_date(value) -> date:
@@ -28,6 +29,7 @@ def sync_feed(db: Session, feed: ICalFeed) -> dict:
     created = 0
     updated = 0
     seen_uids = []
+    touched_checkin_dates = set()
 
     for component in cal.walk():
         if component.name != "VEVENT":
@@ -45,6 +47,7 @@ def sync_feed(db: Session, feed: ICalFeed) -> dict:
                 existing.checkin_date = checkin
                 existing.checkout_date = checkout
                 updated += 1
+                touched_checkin_dates.add(checkin)
         else:
             db.add(Booking(
                 room_id=feed.room_id,
@@ -60,10 +63,17 @@ def sync_feed(db: Session, feed: ICalFeed) -> dict:
                 notes=f"Auto-imported from {feed.source.value} iCal feed. Fill in guest details when known.",
             ))
             created += 1
+            touched_checkin_dates.add(checkin)
 
     feed.last_synced_at = datetime.utcnow()
     feed.last_sync_status = f"ok — {created} created, {updated} updated"
     db.commit()
+
+    if touched_checkin_dates:
+        room = feed.room
+        for checkin_date in touched_checkin_dates:
+            check_cluster_fully_booked(db, room.cluster_id, checkin_date)
+
     return {"created": created, "updated": updated, "total_events": len(seen_uids)}
 
 
