@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.allocation import available_room_counts
 from app.config import settings
 from app.models import Booking, BookingStatus, Cluster, Reminder, ReminderType, Room, RoomStatus, User, UserRole
 from app.notifications import send_email, send_telegram_message
@@ -61,6 +62,59 @@ def check_cluster_fully_booked(db: Session, cluster_id: str, on_date: date) -> b
     send_telegram_message(text)
     send_email(_recipients(db), f"{cluster.name} fully booked on {on_date.isoformat()}", text)
     return True
+
+
+def check_category_fully_booked(db: Session, cluster_id: str, has_ac: bool, on_date: date) -> bool:
+    """Same idea as check_cluster_fully_booked, but scoped to just the AC or
+    just the non-AC rooms in the cluster — fires its own alert per category.
+    """
+    label = "AC" if has_ac else "Non-AC"
+    total = db.query(Room).filter(
+        Room.cluster_id == cluster_id, Room.has_ac == has_ac, Room.is_active == True,  # noqa: E712
+    ).count()
+    if total == 0:
+        return False
+
+    booked = db.query(Booking.room_id).join(Room, Booking.room_id == Room.id).filter(
+        Room.cluster_id == cluster_id,
+        Room.has_ac == has_ac,
+        Booking.booking_status.in_(ACTIVE_STATUSES),
+        Booking.checkin_date <= on_date,
+        Booking.checkout_date > on_date,
+    ).distinct().count()
+
+    if booked < total:
+        return False
+
+    cluster = db.query(Cluster).filter(Cluster.id == cluster_id).first()
+    if not cluster:
+        return False
+
+    text = (
+        f"🚫 *{cluster.name}* — all {total} {label} rooms are booked on {on_date.isoformat()}. "
+        f"Close/block {label} listings for this date on other platforms to avoid a double-booking."
+    )
+    send_telegram_message(text)
+    send_email(_recipients(db), f"{cluster.name}: {label} rooms fully booked on {on_date.isoformat()}", text)
+    return True
+
+
+def notify_checkout_availability(db: Session, cluster_id: str, room_number: str) -> dict:
+    """Call right after a booking is manually marked checked_out. Reports how
+    many AC/non-AC rooms are now free in that cluster.
+    """
+    cluster = db.query(Cluster).filter(Cluster.id == cluster_id).first()
+    if not cluster:
+        return {}
+
+    counts = available_room_counts(db, cluster_id, date.today())
+    text = (
+        f"✅ Room {room_number} checked out at *{cluster.name}*.\n"
+        f"Now available: {counts['ac_available']} AC, {counts['non_ac_available']} Non-AC"
+    )
+    send_telegram_message(text)
+    send_email(_recipients(db), f"{cluster.name}: checkout — rooms now available", text.replace("\n", "<br>"))
+    return counts
 
 
 def run_daily_reminders(db: Session) -> dict:

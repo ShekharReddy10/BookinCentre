@@ -4,10 +4,11 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.allocation import allocate_available_room
 from app.auth import get_accessible_cluster_ids, get_current_user
 from app.database import get_db
-from app.models import Booking, Room, User, BookingStatus, BookingSource, PaymentStatus
-from app.reminders import check_cluster_fully_booked
+from app.models import Booking, Cluster, Room, User, BookingStatus, BookingSource, PaymentStatus
+from app.reminders import check_category_fully_booked, check_cluster_fully_booked, notify_checkout_availability
 from app.schemas import BookingCreate, BookingOut, BookingUpdate
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
@@ -96,14 +97,32 @@ def create_booking(payload: BookingCreate, db: Session = Depends(get_db), curren
     if payload.checkout_date <= payload.checkin_date:
         raise HTTPException(status_code=400, detail="Checkout date must be after checkin date")
 
-    room = db.query(Room).filter(Room.id == payload.room_id).first()
-    if not room:
-        raise HTTPException(status_code=404, detail="Room not found")
-    _check_room_access(room, current_user, db)
+    data = payload.model_dump()
+    room_id = data.pop("room_id", None)
+    cluster_id = data.pop("cluster_id", None)
+    has_ac = data.pop("has_ac", None)
 
-    check_conflict(db, payload.room_id, payload.checkin_date, payload.checkout_date)
+    if room_id:
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        _check_room_access(room, current_user, db)
+        check_conflict(db, room_id, payload.checkin_date, payload.checkout_date)
+    else:
+        if not cluster_id or has_ac is None:
+            raise HTTPException(status_code=400, detail="Provide either room_id, or both cluster_id and has_ac")
+        cluster = db.query(Cluster).filter(Cluster.id == cluster_id).first()
+        if not cluster:
+            raise HTTPException(status_code=404, detail="Cluster not found")
+        accessible = get_accessible_cluster_ids(current_user, db)
+        if accessible is not None and cluster_id not in accessible:
+            raise HTTPException(status_code=403, detail="No access to this cluster")
+        room = allocate_available_room(db, cluster_id, has_ac, payload.checkin_date, payload.checkout_date)
+        if not room:
+            label = "AC" if has_ac else "Non-AC"
+            raise HTTPException(status_code=409, detail=f"No available {label} rooms for these dates")
 
-    booking = Booking(**payload.model_dump())
+    booking = Booking(**data, room_id=room.id)
     recompute_pending(booking)
     db.add(booking)
     db.commit()
@@ -111,6 +130,7 @@ def create_booking(payload: BookingCreate, db: Session = Depends(get_db), curren
 
     if booking.booking_status in ACTIVE_STATUSES:
         check_cluster_fully_booked(db, room.cluster_id, booking.checkin_date)
+        check_category_fully_booked(db, room.cluster_id, room.has_ac, booking.checkin_date)
 
     return booking
 
@@ -136,6 +156,9 @@ def update_booking(
         raise HTTPException(status_code=404, detail="Booking not found")
     _check_room_access(booking.room, current_user, db)
 
+    previous_status = booking.booking_status
+    previous_room = booking.room
+
     data = payload.model_dump(exclude_unset=True)
     new_room_id = data.get("room_id", booking.room_id)
     new_checkin = data.get("checkin_date", booking.checkin_date)
@@ -160,9 +183,14 @@ def update_booking(
     db.commit()
     db.refresh(booking)
 
+    current_room = db.query(Room).filter(Room.id == booking.room_id).first()
+
     if booking.booking_status in ACTIVE_STATUSES:
-        current_room = db.query(Room).filter(Room.id == booking.room_id).first()
         check_cluster_fully_booked(db, current_room.cluster_id, booking.checkin_date)
+        check_category_fully_booked(db, current_room.cluster_id, current_room.has_ac, booking.checkin_date)
+
+    if previous_status != BookingStatus.checked_out and booking.booking_status == BookingStatus.checked_out:
+        notify_checkout_availability(db, previous_room.cluster_id, previous_room.room_number)
 
     return booking
 

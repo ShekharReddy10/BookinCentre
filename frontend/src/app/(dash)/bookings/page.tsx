@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Booking, BookingSource, BookingStatus, PaymentStatus, Room, UserOut } from "@/lib/types";
+import { Booking, BookingCreatePayload, BookingSource, BookingStatus, PaymentStatus, Room, UserOut } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
@@ -20,18 +20,21 @@ const STATUSES: BookingStatus[] = ["reserved", "confirmed", "checked_in", "check
 const PAYMENT_STATUSES: PaymentStatus[] = ["paid", "partial", "pending"];
 
 const emptyForm = {
-  room_id: "", guest_name: "", phone: "", email: "", checkin_date: "", checkout_date: "",
+  room_id: "", cluster_id: "", guest_name: "", phone: "", email: "", checkin_date: "", checkout_date: "",
   adults: 1, children: 0, booking_source: "direct" as BookingSource, managed_by_user_id: "",
   booking_reference: "", total_amount: 0, advance_amount: 0, booking_status: "reserved" as BookingStatus,
   notes: "",
 };
 
+type BookingMode = "specific" | "ac" | "nonac";
+
 export default function BookingsPage() {
   const qc = useQueryClient();
-  const { clusterParam } = useCluster();
+  const { clusters, clusterParam } = useCluster();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Booking | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [bookingMode, setBookingMode] = useState<BookingMode>("specific");
   const [filters, setFilters] = useState({ guest_name: "", booking_status: "", booking_source: "" });
 
   const { data: rooms } = useQuery<Room[]>({
@@ -56,11 +59,12 @@ export default function BookingsPage() {
   const userMap = useMemo(() => Object.fromEntries((users || []).map((u) => [u.id, u])), [users]);
 
   const createMutation = useMutation({
-    mutationFn: async (payload: typeof emptyForm) => (await api.post("/bookings", cleanPayload(payload))).data,
+    mutationFn: async (payload: BookingCreatePayload) => (await api.post("/bookings", payload)).data,
     onSuccess: () => {
       toast.success("Booking created");
       qc.invalidateQueries({ queryKey: ["bookings"] });
       qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      qc.invalidateQueries({ queryKey: ["rooms"] });
       closeModal();
     },
     onError: (e: any) => toast.error(e?.response?.data?.detail || "Failed to create booking"),
@@ -92,14 +96,16 @@ export default function BookingsPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ ...emptyForm, room_id: rooms?.[0]?.id || "" });
+    setBookingMode("specific");
+    setForm({ ...emptyForm, room_id: rooms?.[0]?.id || "", cluster_id: (clusterParam.cluster_id as string) || "" });
     setModalOpen(true);
   }
 
   function openEdit(b: Booking) {
     setEditing(b);
+    setBookingMode("specific");
     setForm({
-      room_id: b.room_id, guest_name: b.guest_name, phone: b.phone || "", email: b.email || "",
+      room_id: b.room_id, cluster_id: "", guest_name: b.guest_name, phone: b.phone || "", email: b.email || "",
       checkin_date: b.checkin_date, checkout_date: b.checkout_date, adults: b.adults, children: b.children,
       booking_source: b.booking_source, managed_by_user_id: b.managed_by_user_id || "",
       booking_reference: b.booking_reference || "", total_amount: b.total_amount, advance_amount: b.advance_amount,
@@ -117,8 +123,15 @@ export default function BookingsPage() {
     e.preventDefault();
     if (editing) {
       updateMutation.mutate({ id: editing.id, payload: cleanPayload(form) });
+      return;
+    }
+    const cleaned = cleanPayload(form);
+    if (bookingMode === "specific") {
+      const { cluster_id: _cluster_id, ...rest } = cleaned;
+      createMutation.mutate(rest as BookingCreatePayload);
     } else {
-      createMutation.mutate(form);
+      const { room_id: _room_id, ...rest } = cleaned;
+      createMutation.mutate({ ...rest, has_ac: bookingMode === "ac" } as BookingCreatePayload);
     }
   }
 
@@ -209,10 +222,32 @@ export default function BookingsPage() {
             </div>
             <div>
               <Label>Room</Label>
-              <Select required value={form.room_id} onChange={(e) => setForm({ ...form, room_id: e.target.value })}>
-                <option value="">Select room</option>
-                {(rooms || []).map((r) => <option key={r.id} value={r.id}>{r.room_number} · {r.room_name}</option>)}
-              </Select>
+              {!editing && (
+                <Select
+                  className="mb-2"
+                  value={bookingMode}
+                  onChange={(e) => setBookingMode(e.target.value as BookingMode)}
+                >
+                  <option value="specific">Specific room</option>
+                  <option value="ac">Any available AC room</option>
+                  <option value="nonac">Any available Non-AC room</option>
+                </Select>
+              )}
+              {bookingMode === "specific" || editing ? (
+                <Select required value={form.room_id} onChange={(e) => setForm({ ...form, room_id: e.target.value })}>
+                  <option value="">Select room</option>
+                  {(rooms || []).map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.room_number} · {r.room_name} ({r.has_ac ? "AC" : "Non-AC"})
+                    </option>
+                  ))}
+                </Select>
+              ) : (
+                <Select required value={form.cluster_id} onChange={(e) => setForm({ ...form, cluster_id: e.target.value })}>
+                  <option value="">Select cluster</option>
+                  {clusters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+              )}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

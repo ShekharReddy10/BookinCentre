@@ -44,6 +44,7 @@ export interface Room {
   maximum_guests: number;
   floor?: string | null;
   amenities?: string | null;
+  has_ac: boolean;
   status: RoomStatus;
   image_url?: string | null;
   is_active: boolean;
@@ -55,6 +56,26 @@ export type BookingSource =
 export type BookingStatus =
   | "reserved" | "confirmed" | "checked_in" | "checked_out" | "cancelled" | "no_show";
 export type PaymentStatus = "paid" | "partial" | "pending";
+
+export interface BookingCreatePayload {
+  room_id?: string;
+  cluster_id?: string;
+  has_ac?: boolean;
+  guest_name: string;
+  phone?: string | null;
+  email?: string | null;
+  checkin_date: string;
+  checkout_date: string;
+  adults: number;
+  children: number;
+  booking_source: BookingSource;
+  managed_by_user_id?: string | null;
+  booking_reference?: string | null;
+  total_amount: number;
+  advance_amount: number;
+  booking_status: BookingStatus;
+  notes?: string | null;
+}
 
 export interface Booking {
   id: string;
@@ -118,7 +139,8 @@ export interface BookingBrief {
 
 export interface ICalFeed {
   id: string;
-  room_id: string;
+  cluster_id: string;
+  has_ac: boolean;
   source: BookingSource;
   url: string;
   is_active: boolean;

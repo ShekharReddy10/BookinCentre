@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useCluster } from "@/lib/cluster-context";
-import { BookingSource, ICalFeed, Room } from "@/lib/types";
+import { BookingSource, ICalFeed } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
@@ -19,7 +19,7 @@ import { Plus, RefreshCw, Send, Trash2 } from "lucide-react";
 
 const SOURCES: BookingSource[] = ["airbnb", "booking_com", "oyo", "makemytrip"];
 
-const emptyForm = { room_id: "", source: "airbnb" as BookingSource, url: "" };
+const emptyForm = { cluster_id: "", has_ac: false, source: "airbnb" as BookingSource, url: "" };
 
 export default function AdminAutomationPage() {
   const { user } = useAuth();
@@ -34,17 +34,12 @@ export default function AdminAutomationPage() {
     if (user && user.role !== "admin") router.replace("/dashboard");
   }, [user, router]);
 
-  const { data: rooms } = useQuery<Room[]>({ queryKey: ["rooms"], queryFn: async () => (await api.get("/rooms")).data });
   const { data: feeds, isLoading } = useQuery<ICalFeed[]>({
     queryKey: ["ical-feeds"],
     queryFn: async () => (await api.get("/ical-feeds")).data,
   });
 
-  const roomLabel = (roomId: string) => {
-    const room = rooms?.find((r) => r.id === roomId);
-    if (!room) return roomId;
-    return `${room.room_number} · ${clusters.find((c) => c.id === room.cluster_id)?.name || ""}`;
-  };
+  const clusterName = (clusterId: string) => clusters.find((c) => c.id === clusterId)?.name || clusterId;
 
   const createMutation = useMutation({
     mutationFn: async (payload: typeof emptyForm) => (await api.post("/ical-feeds", payload)).data,
@@ -132,7 +127,10 @@ export default function AdminAutomationPage() {
                 className="flex flex-col gap-2 rounded-md border border-slate-200 dark:border-slate-800 p-3 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="min-w-0">
-                  <div className="font-medium">{roomLabel(feed.room_id)} · <span className="capitalize">{feed.source.replace("_", " ")}</span></div>
+                  <div className="font-medium">
+                    {clusterName(feed.cluster_id)} · {feed.has_ac ? "AC" : "Non-AC"} rooms ·{" "}
+                    <span className="capitalize">{feed.source.replace("_", " ")}</span>
+                  </div>
                   <div className="truncate text-xs text-slate-400">{feed.url}</div>
                   <div className="text-xs text-slate-400">
                     {feed.last_synced_at ? `Last synced ${formatDate(feed.last_synced_at)}` : "Never synced"}
@@ -163,11 +161,22 @@ export default function AdminAutomationPage() {
           className="space-y-3"
         >
           <div>
-            <Label>Room</Label>
-            <Select required value={form.room_id} onChange={(e) => setForm({ ...form, room_id: e.target.value })}>
-              <option value="">Select room</option>
-              {(rooms || []).map((r) => <option key={r.id} value={r.id}>{roomLabel(r.id)}</option>)}
+            <Label>Cluster (Property)</Label>
+            <Select required value={form.cluster_id} onChange={(e) => setForm({ ...form, cluster_id: e.target.value })}>
+              <option value="">Select cluster</option>
+              {clusters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
+          </div>
+          <div>
+            <Label>Room Category</Label>
+            <Select value={form.has_ac ? "ac" : "nonac"} onChange={(e) => setForm({ ...form, has_ac: e.target.value === "ac" })}>
+              <option value="ac">AC rooms</option>
+              <option value="nonac">Non-AC rooms</option>
+            </Select>
+            <p className="mt-1 text-xs text-slate-400">
+              This listing represents a room category, not one physical room — a matching free room is
+              auto-allocated each time a booking syncs in.
+            </p>
           </div>
           <div>
             <Label>Source</Label>

@@ -106,6 +106,7 @@ class RoomBase(BaseModel):
     maximum_guests: int = 2
     floor: Optional[str] = None
     amenities: Optional[str] = None
+    has_ac: bool = False
     status: RoomStatus = RoomStatus.available
     image_url: Optional[str] = None
     is_active: bool = True
@@ -126,6 +127,7 @@ class RoomUpdate(BaseModel):
     maximum_guests: Optional[int] = None
     floor: Optional[str] = None
     amenities: Optional[str] = None
+    has_ac: Optional[bool] = None
     status: Optional[RoomStatus] = None
     image_url: Optional[str] = None
     is_active: Optional[bool] = None
@@ -140,7 +142,12 @@ class RoomOut(RoomBase):
 # ---------- Bookings ----------
 
 class BookingBase(BaseModel):
-    room_id: str
+    room_id: Optional[str] = None
+    # Alternative to room_id: auto-allocate any available room of this
+    # category within this cluster (e.g. "any AC room"). Provide both
+    # cluster_id and has_ac when room_id is omitted.
+    cluster_id: Optional[str] = None
+    has_ac: Optional[bool] = None
     guest_name: str
     phone: Optional[str] = None
     email: Optional[EmailStr] = None
@@ -254,7 +261,8 @@ class ReminderOut(BaseModel):
 # ---------- iCal Feeds ----------
 
 class ICalFeedCreate(BaseModel):
-    room_id: str
+    cluster_id: str
+    has_ac: bool
     source: BookingSource
     url: str
     is_active: bool = True
@@ -263,7 +271,8 @@ class ICalFeedCreate(BaseModel):
 class ICalFeedOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
-    room_id: str
+    cluster_id: str
+    has_ac: bool
     source: BookingSource
     url: str
     is_active: bool

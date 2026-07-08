@@ -23,7 +23,7 @@ const ROOM_STATUSES: RoomStatus[] = ["available", "occupied", "cleaning", "maint
 const emptyForm = {
   cluster_id: "", room_number: "", room_name: "", room_type: "single" as RoomType,
   daily_price: 0, weekly_price: 0, monthly_price: 0, maximum_guests: 2,
-  floor: "", amenities: "", status: "available" as RoomStatus,
+  floor: "", amenities: "", has_ac: false, status: "available" as RoomStatus,
 };
 
 export default function RoomsPage() {
@@ -76,7 +76,7 @@ export default function RoomsPage() {
       room_number: room.room_number, room_name: room.room_name, room_type: room.room_type,
       daily_price: room.daily_price, weekly_price: room.weekly_price, monthly_price: room.monthly_price,
       maximum_guests: room.maximum_guests, floor: room.floor || "", amenities: room.amenities || "",
-      status: room.status,
+      has_ac: room.has_ac, status: room.status,
     });
     setModalOpen(true);
   }
@@ -118,7 +118,10 @@ export default function RoomsPage() {
                   <div className="text-xs text-slate-400 capitalize">{room.room_type} · Floor {room.floor || "-"}</div>
                   <div className="text-xs text-slate-400">{clusterName(room.cluster_id)}</div>
                 </div>
-                <Badge>{room.status}</Badge>
+                <div className="flex flex-col items-end gap-1">
+                  <Badge>{room.status}</Badge>
+                  <Badge>{room.has_ac ? "AC" : "Non-AC"}</Badge>
+                </div>
               </div>
               <div className="grid grid-cols-3 gap-2 text-sm">
                 <div>
@@ -207,6 +210,14 @@ export default function RoomsPage() {
             <Label>Amenities (comma separated)</Label>
             <Input value={form.amenities} onChange={(e) => setForm({ ...form, amenities: e.target.value })} />
           </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.has_ac}
+              onChange={(e) => setForm({ ...form, has_ac: e.target.checked })}
+            />
+            Has AC
+          </label>
           <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending}>
             {editing ? "Save Changes" : "Create Room"}
           </Button>

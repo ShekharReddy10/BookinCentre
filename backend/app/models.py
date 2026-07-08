@@ -141,6 +141,7 @@ class Room(Base):
     maximum_guests = Column(Integer, default=2)
     floor = Column(String, nullable=True)
     amenities = Column(Text, nullable=True)  # comma-separated
+    has_ac = Column(Boolean, default=False, nullable=False)
     status = Column(Enum(RoomStatus), default=RoomStatus.available, nullable=False)
     image_url = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
@@ -172,6 +173,7 @@ class Booking(Base):
     booking_status = Column(Enum(BookingStatus), default=BookingStatus.reserved, nullable=False)
     notes = Column(Text, nullable=True)
     external_uid = Column(String, nullable=True, index=True)  # set when auto-imported via iCal sync
+    ical_feed_id = Column(String, ForeignKey("ical_feeds.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -180,11 +182,17 @@ class Booking(Base):
 
 
 class ICalFeed(Base):
-    """A read-only calendar export URL from Airbnb/Booking.com/etc for one room."""
+    """A read-only calendar export URL from Airbnb/Booking.com/etc.
+
+    Represents a listing for a room CATEGORY (AC or non-AC) within a cluster,
+    not one specific physical room — the actual room is auto-allocated from
+    whichever matching room is free when each booking syncs in.
+    """
     __tablename__ = "ical_feeds"
 
     id = Column(String, primary_key=True, default=gen_uuid)
-    room_id = Column(String, ForeignKey("rooms.id"), nullable=False)
+    cluster_id = Column(String, ForeignKey("clusters.id"), nullable=False)
+    has_ac = Column(Boolean, nullable=False)
     source = Column(Enum(BookingSource), nullable=False)
     url = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
@@ -192,7 +200,7 @@ class ICalFeed(Base):
     last_sync_status = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    room = relationship("Room")
+    cluster = relationship("Cluster")
 
 
 class Expense(Base):
