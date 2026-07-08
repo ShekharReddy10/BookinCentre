@@ -1,4 +1,4 @@
-"""Add one or many iCal feeds (Airbnb/Booking.com/etc listing calendar URLs) from the shell.
+"""Add iCal feeds (Airbnb/Booking.com/etc listing calendar URLs) from the shell.
 
 Each feed represents a room CATEGORY (AC or Non-AC) within a cluster, not one
 physical room — a matching free room gets auto-allocated per booking that
@@ -9,20 +9,14 @@ Usage:
   # See your cluster names/ids first
   python -m app.add_ical_feed --list-clusters
 
-  # Add a single feed
+  # Edit the FEEDS list in app/ical_feeds_data.py, then just run:
+  python -m app.add_ical_feed
+
+  # Or add a single one without touching that file:
   python -m app.add_ical_feed --cluster "Royal Stay" --category ac --source airbnb \
       --url "https://www.airbnb.co.in/calendar/ical/....ics?t=..."
-
-  # Add many at once from a file (one feed per line: cluster,category,source,url)
-  python -m app.add_ical_feed --file feeds.csv
-
-feeds.csv example:
-  Royal Stay,ac,airbnb,https://www.airbnb.co.in/calendar/ical/AAAA.ics?t=xxx
-  Royal Stay,nonac,airbnb,https://www.airbnb.co.in/calendar/ical/BBBB.ics?t=yyy
-  Royal Stay,ac,booking_com,https://admin.booking.com/hotel/hoteladmin/ical/CCCC.ics
 """
 import argparse
-import csv
 
 from app.database import Base, SessionLocal, engine
 from app.models import BookingSource, Cluster, ICalFeed
@@ -70,6 +64,20 @@ def add_feed(cluster_name: str, category: str, source: str, url: str) -> bool:
         db.close()
 
 
+def add_from_dict_list():
+    from app.ical_feeds_data import FEEDS
+
+    if not FEEDS:
+        print("app/ical_feeds_data.py has an empty FEEDS list — add your entries there first.")
+        return
+
+    added = 0
+    for entry in FEEDS:
+        if add_feed(entry["cluster"], entry["category"], entry["source"], entry["url"]):
+            added += 1
+    print(f"\nDone. Added {added}/{len(FEEDS)} feed(s).")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Add iCal feeds from the shell.")
     parser.add_argument("--list-clusters", action="store_true", help="List cluster names/ids and exit")
@@ -77,34 +85,17 @@ def main():
     parser.add_argument("--category", choices=["ac", "nonac"], help="Room category this listing represents")
     parser.add_argument("--source", choices=VALID_SOURCES, help="Booking platform")
     parser.add_argument("--url", help="Calendar export (.ics) URL")
-    parser.add_argument("--file", help="CSV file with lines: cluster,category,source,url (no header)")
     args = parser.parse_args()
 
     if args.list_clusters:
         list_clusters()
         return
 
-    if args.file:
-        added = 0
-        with open(args.file, newline="") as f:
-            reader = csv.reader(f)
-            for row in reader:
-                if not row or row[0].strip().startswith("#"):
-                    continue
-                if len(row) != 4:
-                    print(f"  SKIP: malformed row (expected 4 fields): {row}")
-                    continue
-                cluster_name, category, source, url = [x.strip() for x in row]
-                if add_feed(cluster_name, category, source, url):
-                    added += 1
-        print(f"\nDone. Added {added} feed(s).")
-        return
-
     if args.cluster and args.category and args.source and args.url:
         add_feed(args.cluster, args.category, args.source, args.url)
         return
 
-    parser.print_help()
+    add_from_dict_list()
 
 
 if __name__ == "__main__":
