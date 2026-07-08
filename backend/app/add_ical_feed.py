@@ -1,0 +1,111 @@
+"""Add one or many iCal feeds (Airbnb/Booking.com/etc listing calendar URLs) from the shell.
+
+Each feed represents a room CATEGORY (AC or Non-AC) within a cluster, not one
+physical room — a matching free room gets auto-allocated per booking that
+syncs in. Runs against whatever DATABASE_URL is set in backend/.env (points
+at production Supabase by default in this project).
+
+Usage:
+  # See your cluster names/ids first
+  python -m app.add_ical_feed --list-clusters
+
+  # Add a single feed
+  python -m app.add_ical_feed --cluster "Royal Stay" --category ac --source airbnb \
+      --url "https://www.airbnb.co.in/calendar/ical/....ics?t=..."
+
+  # Add many at once from a file (one feed per line: cluster,category,source,url)
+  python -m app.add_ical_feed --file feeds.csv
+
+feeds.csv example:
+  Royal Stay,ac,airbnb,https://www.airbnb.co.in/calendar/ical/AAAA.ics?t=xxx
+  Royal Stay,nonac,airbnb,https://www.airbnb.co.in/calendar/ical/BBBB.ics?t=yyy
+  Royal Stay,ac,booking_com,https://admin.booking.com/hotel/hoteladmin/ical/CCCC.ics
+"""
+import argparse
+import csv
+
+from app.database import Base, SessionLocal, engine
+from app.models import BookingSource, Cluster, ICalFeed
+
+Base.metadata.create_all(bind=engine)
+
+VALID_SOURCES = [s.value for s in BookingSource]
+
+
+def list_clusters():
+    db = SessionLocal()
+    try:
+        clusters = db.query(Cluster).order_by(Cluster.name).all()
+        if not clusters:
+            print("No clusters found. Create one first via Admin -> Clusters in the app.")
+            return
+        print(f"{'Name':<30} {'Location':<30} ID")
+        for c in clusters:
+            print(f"{c.name:<30} {(c.location or '-'):<30} {c.id}")
+    finally:
+        db.close()
+
+
+def add_feed(cluster_name: str, category: str, source: str, url: str) -> bool:
+    has_ac = category.strip().lower() in ("ac", "true", "yes", "1")
+    source = source.strip().lower()
+    if source not in VALID_SOURCES:
+        print(f"  SKIP: unknown source '{source}'. Valid: {', '.join(VALID_SOURCES)}")
+        return False
+
+    db = SessionLocal()
+    try:
+        cluster = db.query(Cluster).filter(Cluster.name == cluster_name).first()
+        if not cluster:
+            print(f"  SKIP: no cluster named '{cluster_name}'. Run --list-clusters to see valid names.")
+            return False
+
+        feed = ICalFeed(cluster_id=cluster.id, has_ac=has_ac, source=BookingSource(source), url=url)
+        db.add(feed)
+        db.commit()
+        label = "AC" if has_ac else "Non-AC"
+        print(f"  Added: {cluster.name} / {label} / {source} -> {url[:60]}...")
+        return True
+    finally:
+        db.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Add iCal feeds from the shell.")
+    parser.add_argument("--list-clusters", action="store_true", help="List cluster names/ids and exit")
+    parser.add_argument("--cluster", help="Cluster name (exact match, case-sensitive)")
+    parser.add_argument("--category", choices=["ac", "nonac"], help="Room category this listing represents")
+    parser.add_argument("--source", choices=VALID_SOURCES, help="Booking platform")
+    parser.add_argument("--url", help="Calendar export (.ics) URL")
+    parser.add_argument("--file", help="CSV file with lines: cluster,category,source,url (no header)")
+    args = parser.parse_args()
+
+    if args.list_clusters:
+        list_clusters()
+        return
+
+    if args.file:
+        added = 0
+        with open(args.file, newline="") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if not row or row[0].strip().startswith("#"):
+                    continue
+                if len(row) != 4:
+                    print(f"  SKIP: malformed row (expected 4 fields): {row}")
+                    continue
+                cluster_name, category, source, url = [x.strip() for x in row]
+                if add_feed(cluster_name, category, source, url):
+                    added += 1
+        print(f"\nDone. Added {added} feed(s).")
+        return
+
+    if args.cluster and args.category and args.source and args.url:
+        add_feed(args.cluster, args.category, args.source, args.url)
+        return
+
+    parser.print_help()
+
+
+if __name__ == "__main__":
+    main()
