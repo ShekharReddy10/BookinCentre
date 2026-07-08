@@ -38,6 +38,11 @@ def create_feed(
         raise HTTPException(status_code=404, detail="Cluster not found")
     _check_access(payload.cluster_id, current_user, db)
 
+    if payload.managed_by_user_id:
+        managed_by = db.query(User).filter(User.id == payload.managed_by_user_id).first()
+        if not managed_by:
+            raise HTTPException(status_code=404, detail="managed_by_user_id does not match an existing user")
+
     feed = ICalFeed(**payload.model_dump())
     db.add(feed)
     db.commit()

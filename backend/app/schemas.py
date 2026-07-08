@@ -261,7 +261,9 @@ class ReminderOut(BaseModel):
 # ---------- iCal Feeds ----------
 
 class ICalFeedCreate(BaseModel):
+    label: Optional[str] = None
     cluster_id: str
+    managed_by_user_id: Optional[str] = None
     has_ac: bool
     source: BookingSource
     url: str
@@ -271,7 +273,9 @@ class ICalFeedCreate(BaseModel):
 class ICalFeedOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
+    label: Optional[str] = None
     cluster_id: str
+    managed_by_user_id: Optional[str] = None
     has_ac: bool
     source: BookingSource
     url: str

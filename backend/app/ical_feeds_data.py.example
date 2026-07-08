@@ -5,13 +5,28 @@ then run:
     python -m app.add_ical_feed
 
 Each entry:
-  cluster  - exact cluster name as it appears in the app (case-sensitive)
-  category - "ac" or "nonac"
-  source   - "airbnb", "booking_com", "oyo", or "makemytrip"
-  url      - the calendar export (.ics) URL from that platform
+  cluster           - exact cluster name as it appears in the app (case-sensitive)
+  category          - "ac" or "nonac"
+  source            - "airbnb", "booking_com", "oyo", or "makemytrip"
+  url               - the calendar export (.ics) URL from that platform
+  label             - optional, but recommended once you have more than one
+                       feed per cluster+category (e.g. multiple Airbnb
+                       accounts) so you can tell them apart in Admin -> Automation
+  managed_by_email  - optional; email of an EXISTING team member this account
+                       belongs to. Create the user first (Admin -> Users or
+                       `python -m app.create_user`) — a feed can't be mapped
+                       to a user that doesn't exist yet. Run
+                       `python -m app.add_ical_feed --list-users` to see who's
+                       already in the system.
 """
 
 FEEDS = [
-    # {"cluster": "Royal Stay", "category": "ac", "source": "airbnb", "url": "https://www.airbnb.co.in/calendar/ical/....ics?t=..."},
-    # {"cluster": "Royal Stay", "category": "nonac", "source": "airbnb", "url": "https://www.airbnb.co.in/calendar/ical/....ics?t=..."},
+    # {
+    #     "cluster": "Royal Stay",
+    #     "category": "ac",
+    #     "source": "airbnb",
+    #     "url": "https://www.airbnb.co.in/calendar/ical/....ics?t=...",
+    #     "label": "Account 2 - AC Listing",
+    #     "managed_by_email": "rahul@example.com",
+    # },
 ]

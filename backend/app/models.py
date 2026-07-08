@@ -191,7 +191,9 @@ class ICalFeed(Base):
     __tablename__ = "ical_feeds"
 
     id = Column(String, primary_key=True, default=gen_uuid)
+    label = Column(String, nullable=True)  # e.g. "Account 2 - AC Listing" to tell same-category feeds apart
     cluster_id = Column(String, ForeignKey("clusters.id"), nullable=False)
+    managed_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
     has_ac = Column(Boolean, nullable=False)
     source = Column(Enum(BookingSource), nullable=False)
     url = Column(String, nullable=False)
@@ -199,6 +201,8 @@ class ICalFeed(Base):
     last_synced_at = Column(DateTime, nullable=True)
     last_sync_status = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    managed_by = relationship("User")
 
     cluster = relationship("Cluster")
 

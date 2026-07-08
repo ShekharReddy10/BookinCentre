@@ -139,7 +139,9 @@ export interface BookingBrief {
 
 export interface ICalFeed {
   id: string;
+  label?: string | null;
   cluster_id: string;
+  managed_by_user_id?: string | null;
   has_ac: boolean;
   source: BookingSource;
   url: string;

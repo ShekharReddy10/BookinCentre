@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useCluster } from "@/lib/cluster-context";
-import { BookingSource, ICalFeed } from "@/lib/types";
+import { BookingSource, ICalFeed, UserOut } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
@@ -19,7 +19,9 @@ import { Plus, RefreshCw, Send, Trash2 } from "lucide-react";
 
 const SOURCES: BookingSource[] = ["airbnb", "booking_com", "oyo", "makemytrip"];
 
-const emptyForm = { cluster_id: "", has_ac: false, source: "airbnb" as BookingSource, url: "" };
+const emptyForm = {
+  label: "", cluster_id: "", managed_by_user_id: "", has_ac: false, source: "airbnb" as BookingSource, url: "",
+};
 
 export default function AdminAutomationPage() {
   const { user } = useAuth();
@@ -38,11 +40,14 @@ export default function AdminAutomationPage() {
     queryKey: ["ical-feeds"],
     queryFn: async () => (await api.get("/ical-feeds")).data,
   });
+  const { data: users } = useQuery<UserOut[]>({ queryKey: ["users"], queryFn: async () => (await api.get("/users")).data });
 
   const clusterName = (clusterId: string) => clusters.find((c) => c.id === clusterId)?.name || clusterId;
+  const userName = (userId?: string | null) => (userId ? users?.find((u) => u.id === userId)?.name : null);
 
   const createMutation = useMutation({
-    mutationFn: async (payload: typeof emptyForm) => (await api.post("/ical-feeds", payload)).data,
+    mutationFn: async (payload: typeof emptyForm) =>
+      (await api.post("/ical-feeds", { ...payload, managed_by_user_id: payload.managed_by_user_id || null })).data,
     onSuccess: () => {
       toast.success("Feed added");
       qc.invalidateQueries({ queryKey: ["ical-feeds"] });
@@ -128,9 +133,13 @@ export default function AdminAutomationPage() {
               >
                 <div className="min-w-0">
                   <div className="font-medium">
+                    {feed.label ? `${feed.label} · ` : ""}
                     {clusterName(feed.cluster_id)} · {feed.has_ac ? "AC" : "Non-AC"} rooms ·{" "}
                     <span className="capitalize">{feed.source.replace("_", " ")}</span>
                   </div>
+                  {userName(feed.managed_by_user_id) && (
+                    <div className="text-xs text-slate-400">Managed by {userName(feed.managed_by_user_id)}</div>
+                  )}
                   <div className="truncate text-xs text-slate-400">{feed.url}</div>
                   <div className="text-xs text-slate-400">
                     {feed.last_synced_at ? `Last synced ${formatDate(feed.last_synced_at)}` : "Never synced"}
@@ -161,10 +170,21 @@ export default function AdminAutomationPage() {
           className="space-y-3"
         >
           <div>
+            <Label>Label (optional, helps tell feeds apart)</Label>
+            <Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="Account 2 - AC Listing" />
+          </div>
+          <div>
             <Label>Cluster (Property)</Label>
             <Select required value={form.cluster_id} onChange={(e) => setForm({ ...form, cluster_id: e.target.value })}>
               <option value="">Select cluster</option>
               {clusters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          </div>
+          <div>
+            <Label>Managed By (optional)</Label>
+            <Select value={form.managed_by_user_id} onChange={(e) => setForm({ ...form, managed_by_user_id: e.target.value })}>
+              <option value="">Unassigned</option>
+              {(users || []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </Select>
           </div>
           <div>
