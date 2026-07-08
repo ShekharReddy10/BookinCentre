@@ -10,10 +10,15 @@ and decide which physical room to actually give the guest. So each synced
 event auto-allocates whichever matching room is free for those dates, same
 allocation logic used for manual "book any AC room" bookings.
 
-Guest identity isn't in the feed (platforms redact it for privacy), so
-imported bookings get a generic guest name and zero amounts; staff fill in
-the rest once they know who's arriving.
+Guest identity isn't in the feed (platforms redact it for privacy — full
+name/email/phone stay inside their own platform by design, this is
+intentional on their part and won't change), so imported bookings get a
+generic guest name and zero amounts; staff fill in the rest once they know
+who's arriving. Airbnb's DESCRIPTION field does include a reservation URL
+and the last 4 phone digits though, which we do capture into notes/phone —
+enough to look the guest up on Airbnb, if not their full contact details.
 """
+import re
 from datetime import date, datetime
 
 import httpx
@@ -24,9 +29,27 @@ from app.allocation import allocate_available_room
 from app.models import Booking, BookingStatus, ICalFeed
 from app.reminders import check_category_fully_booked, check_cluster_fully_booked
 
+_PHONE_LAST4_RE = re.compile(r"Phone Number \(Last 4 Digits\):\s*(\d{4})", re.IGNORECASE)
+# Stops at whitespace or a literal "\n" escape sequence (iCal DESCRIPTION lines
+# are often escaped rather than real newlines), so it doesn't swallow the next field.
+_RESERVATION_URL_RE = re.compile(r"Reservation URL:\s*(https?://[^\s\\]+)", re.IGNORECASE)
+
 
 def _to_date(value) -> date:
     return value if isinstance(value, date) and not isinstance(value, datetime) else value.date()
+
+
+def _parse_description(description: str) -> dict:
+    """Best-effort extraction from Airbnb's DESCRIPTION field. Other platforms
+    may format this differently or omit it entirely — both regexes simply
+    won't match and these fields stay blank, no error.
+    """
+    phone_match = _PHONE_LAST4_RE.search(description)
+    url_match = _RESERVATION_URL_RE.search(description)
+    return {
+        "phone_last4": phone_match.group(1) if phone_match else None,
+        "reservation_url": url_match.group(1) if url_match else None,
+    }
 
 
 # Platforms (Airbnb especially) include non-reservation entries in the same feed —
@@ -60,6 +83,8 @@ def sync_feed(db: Session, feed: ICalFeed) -> dict:
         checkin = _to_date(component.get("DTSTART").dt)
         checkout = _to_date(component.get("DTEND").dt)
         summary = str(component.get("SUMMARY") or "Reserved")
+        description = str(component.get("DESCRIPTION") or "")
+        parsed = _parse_description(description)
         seen_uids.append(uid)
 
         if not _is_real_reservation(summary):
@@ -94,9 +119,15 @@ def sync_feed(db: Session, feed: ICalFeed) -> dict:
             if not room:
                 unallocated += 1
                 continue
+
+            notes = f"Auto-imported from {feed.source.value} iCal feed. Fill in guest details when known."
+            if parsed["reservation_url"]:
+                notes += f"\nReservation: {parsed['reservation_url']}"
+
             db.add(Booking(
                 room_id=room.id,
                 guest_name=summary[:120],
+                phone=f"xxxxxx{parsed['phone_last4']}" if parsed["phone_last4"] else None,
                 checkin_date=checkin,
                 checkout_date=checkout,
                 booking_source=feed.source,
@@ -106,7 +137,8 @@ def sync_feed(db: Session, feed: ICalFeed) -> dict:
                 pending_amount=0,
                 external_uid=uid,
                 ical_feed_id=feed.id,
-                notes=f"Auto-imported from {feed.source.value} iCal feed. Fill in guest details when known.",
+                booking_reference=parsed["reservation_url"],
+                notes=notes,
             ))
             created += 1
             touched_checkin_dates.add(checkin)
