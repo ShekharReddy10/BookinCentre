@@ -19,8 +19,14 @@
   }
 }
 
-body {
+html, body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  /* Safety net: no page should ever be able to widen the document itself —
+     wide content (tables, long URLs, etc.) must scroll inside its own
+     overflow-x-auto container instead. Prevents the whole page (and fixed
+     elements like the mobile bottom nav) from panning horizontally. */
+  overflow-x: hidden;
+  max-width: 100vw;
 }

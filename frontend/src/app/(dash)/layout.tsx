@@ -119,7 +119,7 @@ function DashShell({ children }: { children: ReactNode }) {
         <div className="fixed inset-0 z-30 bg-black/30 md:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
-      <div className="flex flex-1 flex-col md:ml-60">
+      <div className="flex min-w-0 flex-1 flex-col md:ml-60">
         {/* Mobile top bar */}
         <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-4 py-3 md:hidden">
           <button onClick={() => setMobileOpen(true)} className="p-1 -ml-1">
@@ -128,7 +128,7 @@ function DashShell({ children }: { children: ReactNode }) {
           <span className="flex-1 font-semibold">Booking Control</span>
         </header>
 
-        <main className="flex-1 p-4 pb-24 md:p-6 md:pb-6">{children}</main>
+        <main className="min-w-0 flex-1 overflow-x-hidden p-4 pb-24 md:p-6 md:pb-6">{children}</main>
 
         {/* Mobile bottom tab bar */}
         <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 md:hidden [padding-bottom:env(safe-area-inset-bottom)]">

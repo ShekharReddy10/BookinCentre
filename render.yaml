@@ -14,7 +14,7 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
-        value: "1440"
+        value: "43200"
       - key: FRONTEND_ORIGIN
         sync: false
       - key: AUTOMATION_SECRET
